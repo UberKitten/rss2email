@@ -850,7 +850,13 @@ func (p *Processor) shouldSkipCategory(logger *slog.Logger, config configfile.Fe
 	for _, opt := range config.Options {
 		if opt.Name == "exclude-category" {
 			for _, cat := range categories {
-				match, _ := regexp.MatchString(opt.Value, cat)
+				match, err := regexp.MatchString(opt.Value, cat)
+				if err != nil {
+					logger.Warn("invalid regular expression in exclude-category",
+						slog.String("exclude-category", opt.Value),
+						slog.String("error", err.Error()))
+					continue
+				}
 				if match {
 					logger.Debug("excluding entry due to exclude-category",
 						slog.String("exclude-category", opt.Value),
@@ -867,15 +873,19 @@ func (p *Processor) shouldSkipCategory(logger *slog.Logger, config configfile.Fe
 	// There might be more than one include-category setting and a match against
 	// any will suffice.
 	includeCategory := false
-	ic := ""
 
 	for _, opt := range config.Options {
 		if opt.Name == "include-category" {
-			ic = opt.Value
 			includeCategory = true
 
 			for _, cat := range categories {
-				match, _ := regexp.MatchString(opt.Value, cat)
+				match, err := regexp.MatchString(opt.Value, cat)
+				if err != nil {
+					logger.Warn("invalid regular expression in include-category",
+						slog.String("include-category", opt.Value),
+						slog.String("error", err.Error()))
+					continue
+				}
 				if match {
 					logger.Debug("including entry due to 'include-category'",
 						slog.String("include-category", opt.Value),
@@ -889,8 +899,7 @@ func (p *Processor) shouldSkipCategory(logger *slog.Logger, config configfile.Fe
 	// If we had at least one "include-category" setting and we reach here
 	// then we had no match.
 	if includeCategory {
-		logger.Debug("excluding entry due to 'include-category'",
-			slog.String("include-category", ic),
+		logger.Debug("excluding entry due to 'include-category' (no match)",
 			slog.String("categories", strings.Join(categories, ", ")))
 		return true
 	}

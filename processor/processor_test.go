@@ -361,3 +361,41 @@ func TestSkipMultipleIncludeCategory(t *testing.T) {
 		t.Fatalf("failed to skip entry that doesn't match any include-category")
 	}
 }
+
+// TestSkipInvalidCategoryRegex ensures that invalid regex patterns don't cause panics
+func TestSkipInvalidCategoryRegex(t *testing.T) {
+
+	// Test with invalid regex in exclude-category
+	feed := configfile.Feed{
+		URL: "blah",
+		Options: []configfile.Option{
+			{Name: "exclude-category", Value: "[invalid"},
+		},
+	}
+
+	// Create the new processor
+	x, err := New()
+	if err != nil {
+		t.Fatalf("error creating processor %s", err.Error())
+	}
+	defer x.Close()
+
+	// Should not panic and should not skip (invalid regex is logged as warning)
+	if x.shouldSkipCategory(logger, feed, []string{"Sports", "Entertainment"}) {
+		t.Fatalf("skipped entry with invalid regex pattern")
+	}
+
+	// Test with invalid regex in include-category
+	feed = configfile.Feed{
+		URL: "blah",
+		Options: []configfile.Option{
+			{Name: "include-category", Value: "[invalid"},
+		},
+	}
+
+	// Should skip because include-category was specified but none matched
+	// (invalid regex fails to match)
+	if !x.shouldSkipCategory(logger, feed, []string{"Sports"}) {
+		t.Fatalf("failed to skip entry when include-category has invalid regex")
+	}
+}
