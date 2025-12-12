@@ -246,3 +246,118 @@ func TestSkipOlder(t *testing.T) {
 		t.Fatalf("skipped age with no options!")
 	}
 }
+
+// TestSkipExcludeCategory ensures that we can exclude items by category regexp
+func TestSkipExcludeCategory(t *testing.T) {
+
+	feed := configfile.Feed{
+		URL: "blah",
+		Options: []configfile.Option{
+			{Name: "exclude-category", Value: "(?i)sports"},
+		},
+	}
+
+	// Create the new processor
+	x, err := New()
+	if err != nil {
+		t.Fatalf("error creating processor %s", err.Error())
+	}
+	defer x.Close()
+
+	// Should skip because "Sports" matches "(?i)sports"
+	if !x.shouldSkipCategory(logger, feed, []string{"News", "Sports", "Entertainment"}) {
+		t.Fatalf("failed to skip entry by category regexp")
+	}
+
+	// Should not skip because no category matches "(?i)sports"
+	if x.shouldSkipCategory(logger, feed, []string{"News", "Entertainment"}) {
+		t.Fatalf("skipped entry that doesn't match category regexp")
+	}
+
+	// Empty categories should not be skipped
+	if x.shouldSkipCategory(logger, feed, []string{}) {
+		t.Fatalf("skipped entry with empty categories")
+	}
+
+	// With no options we're not going to skip
+	feed = configfile.Feed{
+		URL:     "blah",
+		Options: []configfile.Option{},
+	}
+
+	if x.shouldSkipCategory(logger, feed, []string{"Sports", "News"}) {
+		t.Fatalf("skipped something with no options!")
+	}
+}
+
+// TestSkipIncludeCategory ensures that we can include items by category regexp
+func TestSkipIncludeCategory(t *testing.T) {
+
+	feed := configfile.Feed{
+		URL: "blah",
+		Options: []configfile.Option{
+			{Name: "include-category", Value: "(?i)tech"},
+		},
+	}
+
+	// Create the new processor
+	x, err := New()
+	if err != nil {
+		t.Fatalf("error creating processor %s", err.Error())
+	}
+	defer x.Close()
+
+	// Should not skip because "Technology" matches "(?i)tech"
+	if x.shouldSkipCategory(logger, feed, []string{"Technology", "News"}) {
+		t.Fatalf("skipped entry that should be included by category")
+	}
+
+	// Should skip because no category matches "(?i)tech"
+	if !x.shouldSkipCategory(logger, feed, []string{"Sports", "Entertainment"}) {
+		t.Fatalf("failed to skip entry that doesn't match include-category")
+	}
+
+	// With no options we're not going to skip
+	feed = configfile.Feed{
+		URL:     "blah",
+		Options: []configfile.Option{},
+	}
+
+	if x.shouldSkipCategory(logger, feed, []string{"Sports", "News"}) {
+		t.Fatalf("skipped something with no options!")
+	}
+}
+
+// TestSkipMultipleIncludeCategory ensures that multiple include-category options work
+func TestSkipMultipleIncludeCategory(t *testing.T) {
+
+	feed := configfile.Feed{
+		URL: "blah",
+		Options: []configfile.Option{
+			{Name: "include-category", Value: "(?i)tech"},
+			{Name: "include-category", Value: "(?i)programming"},
+		},
+	}
+
+	// Create the new processor
+	x, err := New()
+	if err != nil {
+		t.Fatalf("error creating processor %s", err.Error())
+	}
+	defer x.Close()
+
+	// Should not skip because "Programming" matches second include-category
+	if x.shouldSkipCategory(logger, feed, []string{"Programming"}) {
+		t.Fatalf("skipped entry that should be included by second include-category")
+	}
+
+	// Should not skip because "Technology" matches first include-category
+	if x.shouldSkipCategory(logger, feed, []string{"Technology"}) {
+		t.Fatalf("skipped entry that should be included by first include-category")
+	}
+
+	// Should skip because no category matches any include-category
+	if !x.shouldSkipCategory(logger, feed, []string{"Sports", "Entertainment"}) {
+		t.Fatalf("failed to skip entry that doesn't match any include-category")
+	}
+}

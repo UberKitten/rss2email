@@ -95,26 +95,28 @@ to appear before a URL.
 Per-Feed Configuration Options
 ------------------------------
 
-Key           | Purpose
---------------+--------------------------------------------------------------
-delay         | The amount of time to sleep before retrying a failed HTTP-fetch
-              | in seconds - "retry" configures the number of attempts to be made.
-exclude       | Exclude any item which matches the given regular-expression.
-exclude-title | Exclude any item with a title matching the given regular-expression.
-exclude-older | Exclude any items whose publication date is older than the
-              | specified number of days.
-frequency     | How frequently to poll this feed, in minutes.
-include       | Include only items which match the given regular-expression.
-include-title | Include only items with a title matching the given regular-expression.
-insecure      | Ignore TLS failures when fetching feeds over https.
-              | Disable the checks by setting this value to "true", or "yes".
-notify        | Comma-delimited list of emails to send notifications to (if set,
-              | replaces the emails specified in the cron/daemon command-line).
-retry         | The maximum number of times to retry a failing HTTP-fetch.
-sleep         | Sleep the specified number of seconds, before making the request.
-tag           | Setup a tag for this feed, which can be accessed in the template.
-template      | The path to a feed-specific email template to use.
-user-agent    | Configure a specific User-Agent when making HTTP requests.
+Key              | Purpose
+-----------------+--------------------------------------------------------------
+delay            | The amount of time to sleep before retrying a failed HTTP-fetch
+                 | in seconds - "retry" configures the number of attempts to be made.
+exclude          | Exclude any item which matches the given regular-expression.
+exclude-category | Exclude any item with a category matching the given regular-expression.
+exclude-title    | Exclude any item with a title matching the given regular-expression.
+exclude-older    | Exclude any items whose publication date is older than the
+                 | specified number of days.
+frequency        | How frequently to poll this feed, in minutes.
+include          | Include only items which match the given regular-expression.
+include-category | Include only items with a category matching the given regular-expression.
+include-title    | Include only items with a title matching the given regular-expression.
+insecure         | Ignore TLS failures when fetching feeds over https.
+                 | Disable the checks by setting this value to "true", or "yes".
+notify           | Comma-delimited list of emails to send notifications to (if set,
+                 | replaces the emails specified in the cron/daemon command-line).
+retry            | The maximum number of times to retry a failing HTTP-fetch.
+sleep            | Sleep the specified number of seconds, before making the request.
+tag              | Setup a tag for this feed, which can be accessed in the template.
+template         | The path to a feed-specific email template to use.
+user-agent       | Configure a specific User-Agent when making HTTP requests.
 
 
 Polling Frequency
