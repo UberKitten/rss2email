@@ -53,7 +53,7 @@ func New() (*Processor, error) {
 
 	// Ensure we have a state-directory.
 	dir := state.Directory()
-	errM := os.MkdirAll(dir, 0666)
+	errM := os.MkdirAll(dir, 0755)
 	if errM != nil {
 		return nil, errM
 	}

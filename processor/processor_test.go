@@ -29,7 +29,16 @@ func init() {
 	logger = slog.New(handler)
 }
 
+// setupTestHome sets up a temporary HOME directory for tests
+// This ensures tests can create the .rss2email directory and state.db
+func setupTestHome(t *testing.T) {
+	t.Helper()
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+}
+
 func TestSendEmail(t *testing.T) {
+	setupTestHome(t)
 
 	p, err := New()
 
@@ -51,6 +60,7 @@ func TestSendEmail(t *testing.T) {
 }
 
 func TestVerbose(t *testing.T) {
+	setupTestHome(t)
 
 	p, err := New()
 
@@ -63,6 +73,7 @@ func TestVerbose(t *testing.T) {
 
 // TestSkipExclude ensures that we can exclude items by regexp
 func TestSkipExclude(t *testing.T) {
+	setupTestHome(t)
 
 	feed := configfile.Feed{
 		URL: "blah",
@@ -102,6 +113,7 @@ func TestSkipExclude(t *testing.T) {
 
 // TestSkipInclude ensures that we can exclude items by regexp
 func TestSkipInclude(t *testing.T) {
+	setupTestHome(t)
 
 	feed := configfile.Feed{
 		URL: "blah",
@@ -140,6 +152,7 @@ func TestSkipInclude(t *testing.T) {
 
 // TestSkipIncludeTitle ensures that we can exclude items by regexp
 func TestSkipIncludeTitle(t *testing.T) {
+	setupTestHome(t)
 
 	feed := configfile.Feed{
 		URL: "blah",
@@ -204,6 +217,7 @@ func TestSkipIncludeTitle(t *testing.T) {
 
 // TestSkipOlder ensures that we can exclude items by age
 func TestSkipOlder(t *testing.T) {
+	setupTestHome(t)
 
 	feed := configfile.Feed{
 		URL: "blah",
@@ -249,6 +263,7 @@ func TestSkipOlder(t *testing.T) {
 
 // TestSkipExcludeCategory ensures that we can exclude items by category regexp
 func TestSkipExcludeCategory(t *testing.T) {
+	setupTestHome(t)
 
 	feed := configfile.Feed{
 		URL: "blah",
@@ -292,6 +307,7 @@ func TestSkipExcludeCategory(t *testing.T) {
 
 // TestSkipIncludeCategory ensures that we can include items by category regexp
 func TestSkipIncludeCategory(t *testing.T) {
+	setupTestHome(t)
 
 	feed := configfile.Feed{
 		URL: "blah",
@@ -330,6 +346,7 @@ func TestSkipIncludeCategory(t *testing.T) {
 
 // TestSkipMultipleIncludeCategory ensures that multiple include-category options work
 func TestSkipMultipleIncludeCategory(t *testing.T) {
+	setupTestHome(t)
 
 	feed := configfile.Feed{
 		URL: "blah",
@@ -364,6 +381,7 @@ func TestSkipMultipleIncludeCategory(t *testing.T) {
 
 // TestSkipInvalidCategoryRegex ensures that invalid regex patterns don't cause panics
 func TestSkipInvalidCategoryRegex(t *testing.T) {
+	setupTestHome(t)
 
 	// Test with invalid regex in exclude-category
 	feed := configfile.Feed{
