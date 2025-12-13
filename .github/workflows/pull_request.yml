@@ -28,3 +28,51 @@ jobs:
       run: go build -v ./...
     - name: Test
       run: go test -v ./...
+  build:
+    name: Build Binaries
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            suffix: linux-amd64
+          - goos: linux
+            goarch: '386'
+            suffix: linux-i386
+          - goos: darwin
+            goarch: amd64
+            suffix: darwin-amd64
+          - goos: darwin
+            goarch: arm64
+            suffix: darwin-arm64
+          - goos: freebsd
+            goarch: amd64
+            suffix: freebsd-amd64
+          - goos: freebsd
+            goarch: '386'
+            suffix: freebsd-i386
+    steps:
+    - name: Checkout the repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: 'go.mod'
+    - name: Build binary
+      env:
+        GOOS: ${{ matrix.goos }}
+        GOARCH: ${{ matrix.goarch }}
+        CGO_ENABLED: 0
+      run: |
+        VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "dev-$(git rev-parse --short HEAD)")
+        go build -ldflags "-X main.version=$VERSION" -o rss2email-${{ matrix.suffix }}
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: rss2email-${{ matrix.suffix }}
+        path: rss2email-${{ matrix.suffix }}
