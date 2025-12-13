@@ -53,7 +53,7 @@ func New() (*Processor, error) {
 
 	// Ensure we have a state-directory.
 	dir := state.Directory()
-	errM := os.MkdirAll(dir, 0666)
+	errM := os.MkdirAll(dir, 0755)
 	if errM != nil {
 		return nil, errM
 	}
@@ -405,6 +405,9 @@ func (p *Processor) processFeed(entry configfile.Feed, recipients []string) erro
 
 				// check for age (exclude-older)
 				skip = skip || p.shouldSkipOlder(logger, entry, item.Published)
+
+				// check for category filtering
+				skip = skip || p.shouldSkipCategory(logger, entry, item.Categories)
 
 				if !skip {
 					// Convert the content to text.
@@ -826,6 +829,79 @@ func (p *Processor) shouldSkipOlder(logger *slog.Logger, config configfile.Feed,
 				return true
 			}
 		}
+	}
+
+	// False: Do not skip/ignore this entry
+	return false
+}
+
+// shouldSkipCategory returns true if this entry should be skipped based on category.
+//
+// Our configuration file allows a series of per-feed configuration items,
+// and those allow skipping the entry by regular expression matches on
+// the item categories.
+//
+// If `exclude-category` is set and any category matches, the item is skipped.
+// If `include-category` is set and no category matches, the item is skipped.
+func (p *Processor) shouldSkipCategory(logger *slog.Logger, config configfile.Feed, categories []string) bool {
+
+	// Walk over the options to see if there are any exclude-category options
+	// specified.
+	for _, opt := range config.Options {
+		if opt.Name == "exclude-category" {
+			for _, cat := range categories {
+				match, err := regexp.MatchString(opt.Value, cat)
+				if err != nil {
+					logger.Warn("invalid regular expression in exclude-category",
+						slog.String("exclude-category", opt.Value),
+						slog.String("error", err.Error()))
+					continue
+				}
+				if match {
+					logger.Debug("excluding entry due to exclude-category",
+						slog.String("exclude-category", opt.Value),
+						slog.String("matched-category", cat))
+					return true
+				}
+			}
+		}
+	}
+
+	// If we have an include-category setting then we must skip the entry unless
+	// at least one category matches.
+	//
+	// There might be more than one include-category setting and a match against
+	// any will suffice.
+	includeCategory := false
+
+	for _, opt := range config.Options {
+		if opt.Name == "include-category" {
+			includeCategory = true
+
+			for _, cat := range categories {
+				match, err := regexp.MatchString(opt.Value, cat)
+				if err != nil {
+					logger.Warn("invalid regular expression in include-category",
+						slog.String("include-category", opt.Value),
+						slog.String("error", err.Error()))
+					continue
+				}
+				if match {
+					logger.Debug("including entry due to 'include-category'",
+						slog.String("include-category", opt.Value),
+						slog.String("matched-category", cat))
+					return false
+				}
+			}
+		}
+	}
+
+	// If we had at least one "include-category" setting and we reach here
+	// then we had no match.
+	if includeCategory {
+		logger.Debug("excluding entry due to 'include-category' (no match)",
+			slog.String("categories", strings.Join(categories, ", ")))
+		return true
 	}
 
 	// False: Do not skip/ignore this entry
