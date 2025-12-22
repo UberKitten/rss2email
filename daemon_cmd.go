@@ -20,6 +20,9 @@ type daemonCmd struct {
 
 	// Should we be verbose in operation?
 	verbose bool
+
+	// Default from address for emails
+	from string
 }
 
 // Info is part of the subcommand-API.
@@ -49,6 +52,7 @@ Example:
 // Arguments handles our flag-setup.
 func (d *daemonCmd) Arguments(f *flag.FlagSet) {
 	f.BoolVar(&d.verbose, "verbose", false, "Should we be extra verbose?")
+	f.StringVar(&d.from, "from", "", "Default from address for emails")
 }
 
 // Entry-point
@@ -96,6 +100,16 @@ func (d *daemonCmd) Execute(args []string) int {
 		// Setup the state - note we ALWAYS send emails in this mode.
 		p.SetSendEmail(true)
 		p.SetLogger(logger)
+
+		// Set the default from address if provided
+		// Priority: --from flag, then FROM env var
+		fromAddr := d.from
+		if fromAddr == "" {
+			fromAddr = os.Getenv("FROM")
+		}
+		if fromAddr != "" {
+			p.SetDefaultFrom(fromAddr)
+		}
 
 		// Process all the feeds
 		errors := p.ProcessFeeds(recipients)

@@ -19,6 +19,7 @@ import (
 	"io"
 	"log/slog"
 	"mime/quotedprintable"
+	"net/mail"
 	"net/smtp"
 	"os"
 	"os/exec"
@@ -49,16 +50,19 @@ type Emailer struct {
 
 	// logger contains a dedicated logging object
 	logger *slog.Logger
+
+	// defaultFrom is the default from address for emails
+	defaultFrom string
 }
 
 // New creates a new Emailer object.
 //
 // The arguments are the source feed, the feed item which is being notified,
 // and any associated configuration values from the source feed.
-func New(feed *gofeed.Feed, item withstate.FeedItem, opts []configfile.Option, log *slog.Logger) *Emailer {
+func New(feed *gofeed.Feed, item withstate.FeedItem, opts []configfile.Option, log *slog.Logger, defaultFrom string) *Emailer {
 
 	// Default options
-	obj := &Emailer{feed: feed, item: item, opts: opts}
+	obj := &Emailer{feed: feed, item: item, opts: opts, defaultFrom: defaultFrom}
 
 	// Create a new logger
 	obj.logger = log.With(
@@ -219,6 +223,7 @@ func (e *Emailer) Sendmail(addresses []string, textstr string, htmlstr string) e
 			Feed      string
 			FeedTitle string
 			From      string
+			FromAddr  string
 			HTML      string
 			Link      string
 			Subject   string
@@ -238,7 +243,21 @@ func (e *Emailer) Sendmail(addresses []string, textstr string, htmlstr string) e
 		var x TemplateParms
 		x.Feed = e.feed.Link
 		x.FeedTitle = e.feed.Title
-		x.From = addr
+
+		// Check if a custom from address was configured
+		from := addr // Default to recipient address
+		if e.defaultFrom != "" {
+			from = e.defaultFrom // Use default from if set
+		}
+		for _, opt := range e.opts {
+			if opt.Name == "from" {
+				from = opt.Value // Per-feed from overrides default
+				break
+			}
+		}
+		x.FromAddr = from
+		x.From = fmt.Sprintf("\"%s\" <%s>", e.feed.Title, from)
+
 		x.Link = e.item.Link
 		x.Subject = e.item.Title
 		x.To = addr
@@ -281,14 +300,14 @@ func (e *Emailer) Sendmail(addresses []string, textstr string, htmlstr string) e
 		if e.isSMTP() {
 
 			e.logger.Debug("preparing to send email",
-				slog.String("recipient", addr),
+				slog.String("to", addr),
 				slog.String("method", "smtp"))
 
 			err := e.sendSMTP(addr, buf.Bytes())
 			if err != nil {
 
 				e.logger.Error("error sending email",
-					slog.String("recipient", addr),
+					slog.String("to", addr),
 					slog.String("method", "smtp"),
 					slog.String("error", err.Error()))
 
@@ -296,26 +315,32 @@ func (e *Emailer) Sendmail(addresses []string, textstr string, htmlstr string) e
 			}
 
 			e.logger.Debug("email sent",
-				slog.String("recipient", addr),
+				slog.String("to", addr),
 				slog.String("method", "smtp"))
 
 		} else {
 
+			from := extractFromHeader(buf.Bytes())
+			if from == "" {
+				from = fmt.Sprintf("\"%s\" <%s>", e.feed.Title, addr) // fallback if extraction fails
+			}
+
 			e.logger.Debug("preparing to send email",
-				slog.String("recipient", addr),
+				slog.String("from", from),
+				slog.String("to", addr),
 				slog.String("method", "sendmail"))
 
-			err := e.sendSendmail(addr, buf.Bytes())
+			err := e.sendSendmail(addr, from, buf.Bytes())
 			if err != nil {
 				e.logger.Error("error sending email",
-					slog.String("recipient", addr),
+					slog.String("to", addr),
 					slog.String("method", "sendmail"),
 					slog.String("error", err.Error()))
 				return err
 			}
 
 			e.logger.Debug("email sent",
-				slog.String("recipient", addr),
+				slog.String("to", addr),
 				slog.String("method", "sendmail"))
 
 		}
@@ -325,6 +350,47 @@ func (e *Emailer) Sendmail(addresses []string, textstr string, htmlstr string) e
 		slog.Int("recipients", len(addresses)))
 
 	return nil
+}
+
+// extractFromHeader extracts the email address from the From: header.
+//
+// It handles both display-name + address forms like:
+//
+//	"Name" <user@example.com>
+//
+// and simple forms like:
+//
+//	user@example.com
+func extractFromHeader(content []byte) string {
+	lines := strings.Split(string(content), "\n")
+	for _, line := range lines {
+		// Be tolerant of different capitalizations and spacing
+		trimmed := strings.TrimSpace(line)
+		if len(trimmed) == 0 {
+			// End of headers
+			break
+		}
+		lower := strings.ToLower(trimmed)
+		if strings.HasPrefix(lower, "from:") {
+			value := strings.TrimSpace(trimmed[len("From:"):])
+
+			// First try to parse using the standard library
+			if addr, err := mail.ParseAddress(value); err == nil && addr.Address != "" {
+				return addr.Address
+			}
+
+			// Fallbacks: handle simple angle-bracket cases manually
+			if start := strings.Index(value, "<"); start != -1 {
+				if end := strings.Index(value[start+1:], ">"); end != -1 {
+					return strings.TrimSpace(value[start+1 : start+1+end])
+				}
+			}
+
+			// Last resort: assume the whole value is just the address
+			return value
+		}
+	}
+	return ""
 }
 
 // isSMTP determines whether we should use SMTP to send the email.
@@ -386,15 +452,15 @@ func (e *Emailer) sendSMTP(to string, content []byte) error {
 
 // sendSendmail sends the content of the email to the destination address
 // via /usr/sbin/sendmail
-func (e *Emailer) sendSendmail(addr string, content []byte) error {
+func (e *Emailer) sendSendmail(to string, from string, content []byte) error {
 
 	// Get the command to run.
-	sendmail := exec.Command("/usr/sbin/sendmail", "-i", "-f", addr, addr)
+	sendmail := exec.Command("/usr/sbin/sendmail", "-i", "-f", from, to)
 	stdin, err := sendmail.StdinPipe()
 	if err != nil {
 
 		e.logger.Error("error creating STDIN pipe to sendmail",
-			slog.String("recipient", addr),
+			slog.String("to", to),
 			slog.String("error", err.Error()))
 
 		return err
@@ -407,7 +473,7 @@ func (e *Emailer) sendSendmail(addr string, content []byte) error {
 	if err != nil {
 
 		e.logger.Error("error creating STDOUT pipe to sendmail",
-			slog.String("recipient", addr),
+			slog.String("to", to),
 			slog.String("error", err.Error()))
 
 		return err
@@ -420,7 +486,7 @@ func (e *Emailer) sendSendmail(addr string, content []byte) error {
 	if err != nil {
 
 		e.logger.Error("error starting sendmail",
-			slog.String("recipient", addr),
+			slog.String("to", to),
 			slog.String("error", err.Error()))
 
 		return err
@@ -429,7 +495,7 @@ func (e *Emailer) sendSendmail(addr string, content []byte) error {
 	if err != nil {
 
 		e.logger.Error("error writing to sendmail pipe",
-			slog.String("recipient", addr),
+			slog.String("to", to),
 			slog.String("error", err.Error()))
 
 		return err
@@ -443,7 +509,7 @@ func (e *Emailer) sendSendmail(addr string, content []byte) error {
 	if err != nil {
 
 		e.logger.Error("error reading from sendmail pipe",
-			slog.String("recipient", addr),
+			slog.String("to", to),
 			slog.String("error", err.Error()))
 
 		return err
@@ -456,7 +522,7 @@ func (e *Emailer) sendSendmail(addr string, content []byte) error {
 	if err != nil {
 
 		e.logger.Error("error awaiting sendmail completion",
-			slog.String("recipient", addr),
+			slog.String("to", to),
 			slog.String("error", err.Error()))
 
 		return err

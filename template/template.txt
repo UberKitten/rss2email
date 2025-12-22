@@ -6,7 +6,8 @@
 
       {{.FeedTitle}}  - The human-readable title of the source feed.
       {{.Feed}}       - The URL of the feed from which the item came.
-      {{.From}}       - The email address which sends the email.
+      {{.From}}       - The email From header like: "Feed Title" <sender@example.com>
+      {{.FromAddr}}   - Only the email address which sends the email.
       {{.Link}}       - The link to the new entry.
       {{.Subject}}    - The subject of the new entry.
       {{.To}}         - The recipient of the email.

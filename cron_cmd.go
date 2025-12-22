@@ -21,6 +21,9 @@ type cronCmd struct {
 
 	// Should we send emails?
 	send bool
+
+	// Default from address for emails
+	from string
 }
 
 // Info is part of the subcommand-API.
@@ -66,6 +69,7 @@ may create a local override for this, for more details see :
 func (c *cronCmd) Arguments(f *flag.FlagSet) {
 	f.BoolVar(&c.verbose, "verbose", false, "Should we be extra verbose?")
 	f.BoolVar(&c.send, "send", true, "Should we send emails, or just pretend to?")
+	f.StringVar(&c.from, "from", "", "Default from address for emails")
 }
 
 // Entry-point
@@ -110,6 +114,16 @@ func (c *cronCmd) Execute(args []string) int {
 	// Setup the state
 	p.SetSendEmail(c.send)
 	p.SetLogger(logger)
+
+	// Set the default from address if provided
+	// Priority: --from flag, then FROM env var
+	fromAddr := c.from
+	if fromAddr == "" {
+		fromAddr = os.Getenv("FROM")
+	}
+	if fromAddr != "" {
+		p.SetDefaultFrom(fromAddr)
+	}
 
 	errors := p.ProcessFeeds(recipients)
 

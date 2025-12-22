@@ -43,6 +43,9 @@ type Processor struct {
 
 	// version stores the version of our application.
 	version string
+
+	// defaultFrom stores the default from address for emails.
+	defaultFrom string
 }
 
 // New creates a new Processor object.
@@ -414,7 +417,7 @@ func (p *Processor) processFeed(entry configfile.Feed, recipients []string) erro
 					text := html2text.HTML2Text(content)
 
 					// Send the mail
-					helper := emailer.New(feed, item, entry.Options, logger)
+					helper := emailer.New(feed, item, entry.Options, logger, p.defaultFrom)
 					err = helper.Sendmail(recipients, text, content)
 					if err != nil {
 
@@ -923,4 +926,9 @@ func (p *Processor) SetLogger(logger *slog.Logger) {
 // which means that the version will end up in our (default) user-agent.
 func (p *Processor) SetVersion(version string) {
 	p.version = version
+}
+
+// SetDefaultFrom sets the default from address for emails.
+func (p *Processor) SetDefaultFrom(from string) {
+	p.defaultFrom = from
 }
