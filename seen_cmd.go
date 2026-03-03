@@ -5,21 +5,21 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/skx/rss2email/state"
-	"github.com/skx/subcommands"
 	"go.etcd.io/bbolt"
 )
 
 // Structure for our options and state.
 type seenCmd struct {
-
-	// We embed the NoFlags option, because we accept no command-line flags.
-	subcommands.NoFlags
+	// Show only counts, not individual items
+	count bool
 }
 
 // Info is part of the subcommand-API.
@@ -30,14 +30,30 @@ This sub-command will report upon all the feeds to which
 you're subscribed, and show the link to each feed-entry
 to which you've been notified in the past.
 
-(i.e. This walks the internal database which is used to
-store state, and outputs the list of recorded items which
-are no longer regarded as new/unseen.)
+You can optionally filter by feed URL pattern (substring match).
+
+Examples:
+
+    $ rss2email seen
+    $ rss2email seen example.com
+    $ rss2email seen --count
+    $ rss2email seen --count blog.example.com
 `
+}
+
+// Arguments handles our flag-setup.
+func (s *seenCmd) Arguments(f *flag.FlagSet) {
+	f.BoolVar(&s.count, "count", false, "Show only the number of items per feed, not individual items")
 }
 
 // Entry-point.
 func (s *seenCmd) Execute(args []string) int {
+
+	// Optional pattern filter
+	pattern := ""
+	if len(args) > 0 {
+		pattern = args[0]
+	}
 
 	// Ensure we have a state-directory.
 	dir := state.Directory()
@@ -73,35 +89,58 @@ func (s *seenCmd) Execute(args []string) int {
 		return 1
 	}
 
+	matched := 0
+
 	// Now we have a list of buckets, we'll show the contents
 	for _, buck := range bucketNames {
 
-		fmt.Printf("%s\n", buck)
+		name := string(buck)
 
-		err = db.View(func(tx *bbolt.Tx) error {
-
-			// Select the bucket, which we know must exist
-			b := tx.Bucket([]byte(buck))
-
-			// Get a cursor to the key=value entries in the bucket
-			c := b.Cursor()
-
-			// Iterate over the key/value pairs.
-			for k, _ := c.First(); k != nil; k, _ = c.Next() {
-
-				// Convert the key to a string
-				key := string(k)
-
-				fmt.Printf("\t%s\n", key)
-			}
-
-			return nil
-		})
-
-		if err != nil {
-			logger.Error("failed iterating over bucket", slog.String("database", dbPath), slog.String("bucket", string(buck)), slog.String("error", err.Error()))
-			return 1
+		// Apply pattern filter
+		if pattern != "" && !strings.Contains(strings.ToLower(name), strings.ToLower(pattern)) {
+			continue
 		}
+
+		matched++
+
+		if s.count {
+			// Count-only mode
+			itemCount := 0
+			err = db.View(func(tx *bbolt.Tx) error {
+				b := tx.Bucket([]byte(buck))
+				c := b.Cursor()
+				for k, _ := c.First(); k != nil; k, _ = c.Next() {
+					itemCount++
+				}
+				return nil
+			})
+			if err != nil {
+				logger.Error("failed iterating over bucket", slog.String("database", dbPath), slog.String("bucket", name), slog.String("error", err.Error()))
+				return 1
+			}
+			fmt.Printf("%s (%d items)\n", name, itemCount)
+		} else {
+			fmt.Printf("%s\n", name)
+
+			err = db.View(func(tx *bbolt.Tx) error {
+				b := tx.Bucket([]byte(buck))
+				c := b.Cursor()
+				for k, _ := c.First(); k != nil; k, _ = c.Next() {
+					key := string(k)
+					fmt.Printf("\t%s\n", key)
+				}
+				return nil
+			})
+
+			if err != nil {
+				logger.Error("failed iterating over bucket", slog.String("database", dbPath), slog.String("bucket", name), slog.String("error", err.Error()))
+				return 1
+			}
+		}
+	}
+
+	if pattern != "" && matched == 0 {
+		fmt.Printf("No feeds matching '%s'\n", pattern)
 	}
 
 	return 0

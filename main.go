@@ -158,6 +158,7 @@ func main() {
 	// Register each of our subcommands.
 	//
 	subcommands.Register(&addCmd{})
+	subcommands.Register(&checkCmd{})
 	subcommands.Register(&cronCmd{})
 	subcommands.Register(&configCmd{})
 	subcommands.Register(&daemonCmd{})
@@ -167,6 +168,8 @@ func main() {
 	subcommands.Register(&listCmd{})
 	subcommands.Register(&listDefaultTemplateCmd{})
 	subcommands.Register(&seenCmd{})
+	subcommands.Register(&statusCmd{})
+	subcommands.Register(&testCmd{})
 	subcommands.Register(&unseeCmd{})
 	subcommands.Register(&versionCmd{})
 
