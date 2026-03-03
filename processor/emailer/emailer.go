@@ -25,11 +25,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"text/template"
 
 	"github.com/mmcdole/gofeed"
+	"github.com/skx/rss2email/config"
 	"github.com/skx/rss2email/configfile"
 	"github.com/skx/rss2email/state"
 	emailtemplate "github.com/skx/rss2email/template"
@@ -53,6 +53,9 @@ type Emailer struct {
 
 	// defaultFrom is the default from address for emails
 	defaultFrom string
+
+	// cfg holds the application configuration (SMTP settings, etc.)
+	cfg *config.Config
 }
 
 // New creates a new Emailer object.
@@ -63,6 +66,22 @@ func New(feed *gofeed.Feed, item withstate.FeedItem, opts []configfile.Option, l
 
 	// Default options
 	obj := &Emailer{feed: feed, item: item, opts: opts, defaultFrom: defaultFrom}
+
+	// Load application config (SMTP settings, etc.)
+	cfg, err := config.Load()
+	if err != nil {
+		log.Warn("failed to load config file, using env vars only",
+			slog.String("error", err.Error()))
+		cfg = &config.Config{}
+		cfg.SMTP.Port = 587
+	}
+
+	// Config-level from as fallback
+	if obj.defaultFrom == "" && cfg.From != "" {
+		obj.defaultFrom = cfg.From
+	}
+
+	obj.cfg = cfg
 
 	// Create a new logger
 	obj.logger = log.With(
@@ -395,48 +414,19 @@ func extractFromHeader(content []byte) string {
 
 // isSMTP determines whether we should use SMTP to send the email.
 //
-// We just check to see that the obvious mandatory parameters are set in the
-// environment.  If they're wrong we'll get an error at delivery time, as
-// expected.
+// We check the loaded config (which includes env var fallbacks).
 func (e *Emailer) isSMTP() bool {
-
-	// Mandatory environmental variables
-	vars := []string{"SMTP_HOST", "SMTP_USERNAME", "SMTP_PASSWORD"}
-
-	for _, name := range vars {
-		if os.Getenv(name) == "" {
-			return false
-		}
-	}
-
-	return true
+	return e.cfg.HasSMTP()
 }
 
 // sendSMTP sends the content of the email to the destination address
 // via SMTP.
 func (e *Emailer) sendSMTP(to string, content []byte) error {
 
-	// basics
-	host := os.Getenv("SMTP_HOST")
-	port := os.Getenv("SMTP_PORT")
-
-	p := 587
-	if port != "" {
-		n, err := strconv.Atoi(port)
-		if err != nil {
-
-			e.logger.Warn("error converting SMTP_PORT to integer",
-				slog.String("port", port),
-				slog.String("error", err.Error()))
-
-			return err
-		}
-		p = n
-	}
-
-	// auth
-	user := os.Getenv("SMTP_USERNAME")
-	pass := os.Getenv("SMTP_PASSWORD")
+	host := e.cfg.SMTP.Host
+	p := e.cfg.SMTP.Port
+	user := e.cfg.SMTP.Username
+	pass := e.cfg.SMTP.Password
 
 	// Authenticate
 	auth := smtp.PlainAuth("", user, pass, host)

@@ -8,6 +8,7 @@ require (
 	github.com/mmcdole/gofeed v1.3.0
 	github.com/skx/subcommands v0.9.2
 	go.etcd.io/bbolt v1.3.10
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
