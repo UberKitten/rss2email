@@ -1,0 +1,15 @@
+# rss2email configuration
+# Place this file at ~/.rss2email/config.yaml
+
+# SMTP delivery settings
+# These can also be set via environment variables (SMTP_HOST, etc.)
+# Config file values take precedence over env vars.
+smtp:
+  host: smtp.example.com
+  port: 587
+  username: user@example.com
+  password: your-smtp-password
+
+# Default sender address for all feeds
+# Can be overridden per-feed with the 'from' option in feeds.txt
+from: rss@example.com
