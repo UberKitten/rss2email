@@ -149,6 +149,33 @@ word "cake" in their titles regardless of whether it is written as "cake",
       https://example.com/feed/path/here
        - exclude-title: (?i)cake
 
+
+Application Configuration (config.yaml)
+----------------------------------------
+
+In addition to the feeds configuration file, rss2email supports a YAML
+configuration file for application-level settings like SMTP delivery.
+
+The configuration file is loaded from the same directory as feeds.txt:
+
+     ` + path + `/config.yaml
+
+Example config.yaml:
+
+      smtp:
+        host: smtp.example.com
+        port: 587
+        username: user@example.com
+        password: your-password
+      from: sender@example.com
+
+Environment variables (SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD,
+FROM) are used as fallbacks when the config file doesn't specify a value.
+Config file values take precedence over environment variables.
+
+Use 'rss2email status' to see your current configuration, and
+'rss2email test user@example.com' to verify email delivery works.
+
 `
 	return name, doc
 }

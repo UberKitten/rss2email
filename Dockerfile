@@ -1,22 +1,25 @@
 #
-# Trivial Dockerfile for rss2email.
+# Dockerfile for rss2email.
 #
-# Build it like so:
-#
+# Build:
 #   docker build -t rss2email:latest .
 #
-# I tag/push to a github repository like so:
+# Run with config file (recommended):
+#   docker run -d \
+#        -v /path/to/config:/app/.rss2email \
+#        rss2email:latest daemon user@example.com
 #
-#   docker tag rss2email:latest docker.pkg.github.com/skx/docker/rss2email:7
-#   docker push docker.pkg.github.com/skx/docker/rss2email:7
+# The config directory should contain:
+#   - feeds.txt    (feed list)
+#   - config.yaml  (SMTP settings)
+#   - state.db     (created automatically)
 #
-# Running it will be something like this:
-#
-#    docker run -d \
-#         --env SMTP_HOST=smtp.gmail.com \
-#         --env SMTP_USERNAME=steve@example.com \
-#         --env SMTP_PASSWORD=secret \
-#         rss2email:latest daemon -verbose steve@example.com
+# Legacy: env vars still work as fallback:
+#   docker run -d \
+#        --env SMTP_HOST=smtp.gmail.com \
+#        --env SMTP_USERNAME=user@example.com \
+#        --env SMTP_PASSWORD=secret \
+#        rss2email:latest daemon user@example.com
 #
 
 # STEP1 - Build-image
@@ -25,7 +28,7 @@ FROM golang:alpine AS builder
 
 ARG VERSION
 
-LABEL org.opencontainers.image.source=https://github.com/skx/rss2email/
+LABEL org.opencontainers.image.source=https://github.com/UberKitten/rss2email
 
 # Create a working-directory
 WORKDIR $GOPATH/src/github.com/skx/rss2email/
@@ -39,6 +42,9 @@ RUN go build -ldflags "-X main.version=$VERSION" -o /go/bin/rss2email
 # STEP2 - Deploy-image
 ###########################################################################
 FROM alpine
+
+# Install CA certificates for HTTPS feed fetching and TLS SMTP
+RUN apk add --no-cache ca-certificates
 
 # Copy the binary.
 COPY --from=builder /go/bin/rss2email /usr/local/bin/
@@ -55,5 +61,6 @@ RUN addgroup app && adduser -D -G app -h /app app
 # Tell docker that all future commands should run as the app user
 USER app
 
-# Set working directory
+# Set working directory and HOME so state goes to /app/.rss2email
 WORKDIR /app
+ENV HOME=/app
