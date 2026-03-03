@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/skx/rss2email/config"
 	"github.com/skx/rss2email/processor"
 )
 
@@ -116,8 +117,13 @@ func (c *cronCmd) Execute(args []string) int {
 	p.SetLogger(logger)
 
 	// Set the default from address if provided
-	// Priority: --from flag, then FROM env var
+	// Priority: --from flag, then config file, then FROM env var
 	fromAddr := c.from
+	if fromAddr == "" {
+		if cfg, err := config.Load(); err == nil && cfg.From != "" {
+			fromAddr = cfg.From
+		}
+	}
 	if fromAddr == "" {
 		fromAddr = os.Getenv("FROM")
 	}
