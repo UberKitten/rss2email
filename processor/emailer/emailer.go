@@ -27,6 +27,7 @@ import (
 	"regexp"
 	"strings"
 	"text/template"
+	"time"
 
 	"github.com/mmcdole/gofeed"
 	"github.com/skx/rss2email/config"
@@ -214,6 +215,94 @@ func makeListIdHeader(s string) string {
 //
 // We send a MIME message with both a plain-text and a HTML-version of the
 // message.  This should be nicer for users.
+// sendRetryConfig controls retry behavior for transient send failures.
+const (
+	maxSendRetries    = 3
+	initialRetryDelay = 5 * time.Second
+	maxRetryDelay     = 30 * time.Second
+)
+
+// isTransientError checks if an error looks like a transient/rate-limit
+// failure that's worth retrying. This covers SMTP 4xx codes and common
+// rate-limit messages from providers like Azure Communication Services.
+func isTransientError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+
+	// SMTP 4xx errors are explicitly transient
+	for _, prefix := range []string{"4", "45"} {
+		if strings.HasPrefix(msg, prefix) {
+			return true
+		}
+	}
+
+	// Common rate-limit / transient patterns
+	for _, pattern := range []string{
+		"rate",
+		"throttl",
+		"too many",
+		"try again",
+		"temporary",
+		"4.5.127",
+		"4.7.427",
+	} {
+		if strings.Contains(strings.ToLower(msg), pattern) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// sendWithRetry wraps a send function with retry logic for transient errors.
+// It uses exponential backoff starting at initialRetryDelay up to maxRetryDelay.
+func (e *Emailer) sendWithRetry(desc string, sendFn func() error) error {
+	var err error
+	delay := initialRetryDelay
+
+	for attempt := 0; attempt <= maxSendRetries; attempt++ {
+		err = sendFn()
+		if err == nil {
+			return nil
+		}
+
+		if !isTransientError(err) {
+			// Permanent error — don't retry
+			e.logger.Error("permanent send error, not retrying",
+				slog.String("desc", desc),
+				slog.Int("attempt", attempt+1),
+				slog.String("error", err.Error()))
+			return err
+		}
+
+		if attempt < maxSendRetries {
+			e.logger.Warn("transient send error, retrying after backoff",
+				slog.String("desc", desc),
+				slog.Int("attempt", attempt+1),
+				slog.Int("max_retries", maxSendRetries),
+				slog.Duration("backoff", delay),
+				slog.String("error", err.Error()))
+
+			time.Sleep(delay)
+
+			// Exponential backoff with cap
+			delay *= 2
+			if delay > maxRetryDelay {
+				delay = maxRetryDelay
+			}
+		}
+	}
+
+	e.logger.Error("all send retries exhausted",
+		slog.String("desc", desc),
+		slog.Int("attempts", maxSendRetries+1),
+		slog.String("error", err.Error()))
+
+	return fmt.Errorf("send failed after %d attempts: %w", maxSendRetries+1, err)
+}
+
 func (e *Emailer) Sendmail(addresses []string, textstr string, htmlstr string) error {
 
 	var err error
@@ -322,7 +411,9 @@ func (e *Emailer) Sendmail(addresses []string, textstr string, htmlstr string) e
 				slog.String("to", addr),
 				slog.String("method", "smtp"))
 
-			err := e.sendSMTP(addr, buf.Bytes())
+			err := e.sendWithRetry(fmt.Sprintf("smtp→%s", addr), func() error {
+				return e.sendSMTP(addr, buf.Bytes())
+			})
 			if err != nil {
 
 				e.logger.Error("error sending email",
@@ -349,7 +440,9 @@ func (e *Emailer) Sendmail(addresses []string, textstr string, htmlstr string) e
 				slog.String("to", addr),
 				slog.String("method", "sendmail"))
 
-			err := e.sendSendmail(addr, from, buf.Bytes())
+			err := e.sendWithRetry(fmt.Sprintf("sendmail→%s", addr), func() error {
+				return e.sendSendmail(addr, from, buf.Bytes())
+			})
 			if err != nil {
 				e.logger.Error("error sending email",
 					slog.String("to", addr),

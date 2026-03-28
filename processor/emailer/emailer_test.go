@@ -1,6 +1,7 @@
 package emailer
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -49,5 +50,34 @@ func TestMakeListIdHeader(t *testing.T) {
 				t.Errorf("makeListIdHeader(%q) produced invalid char %q at position %d", tt.input, c, i)
 			}
 		}
+	}
+}
+
+func TestIsTransientError(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		expected bool
+	}{
+		{"nil error", nil, false},
+		{"permanent error", errors.New("550 mailbox not found"), false},
+		{"random error", errors.New("connection refused"), false},
+		{"azure rate limit", errors.New("450 4.5.127 Message rejected. Excessive message rate from sender."), true},
+		{"generic rate limit", errors.New("rate limit exceeded"), true},
+		{"throttled", errors.New("request throttled"), true},
+		{"too many requests", errors.New("too many requests"), true},
+		{"try again later", errors.New("try again later"), true},
+		{"temporary failure", errors.New("temporary failure"), true},
+		{"smtp 4xx start", errors.New("421 service not available"), true},
+		{"office365 throttle", errors.New("4.7.427 throttled"), true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isTransientError(tt.err)
+			if got != tt.expected {
+				t.Errorf("isTransientError(%v) = %v; want %v", tt.err, got, tt.expected)
+			}
+		})
 	}
 }

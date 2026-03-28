@@ -298,6 +298,17 @@ func (p *Processor) processFeed(entry configfile.Feed, recipients []string) erro
 	seen := 0
 	unseen := 0
 
+	// Count send successes and failures for summary logging.
+	sentCount := 0
+	sendErrors := 0
+
+	// Throttle delay between consecutive email sends.
+	// This helps avoid hitting provider rate limits (e.g. Azure's
+	// "450 4.5.127 Excessive message rate") when processing feeds
+	// that contain many new items at once (large backlogs, new
+	// subscriptions, etc.)
+	sendThrottleDelay := 2 * time.Second
+
 	// Keep track of all the items in the feed.
 	items := []string{}
 
@@ -413,6 +424,12 @@ func (p *Processor) processFeed(entry configfile.Feed, recipients []string) erro
 				skip = skip || p.shouldSkipCategory(logger, entry, item.Categories)
 
 				if !skip {
+					// Throttle between sends when processing multiple
+					// new items, to avoid triggering provider rate limits.
+					if sentCount > 0 {
+						time.Sleep(sendThrottleDelay)
+					}
+
 					// Convert the content to text.
 					text := html2text.HTML2Text(content)
 
@@ -421,11 +438,18 @@ func (p *Processor) processFeed(entry configfile.Feed, recipients []string) erro
 					err = helper.Sendmail(recipients, text, content)
 					if err != nil {
 
-						logger.Error("failed to send email",
+						sendErrors++
+						logger.Error("failed to send email, continuing with remaining items",
+							slog.String("title", item.Title),
 							slog.String("recipients", strings.Join(recipients, ",")),
-							slog.String("error", err.Error()))
+							slog.String("error", err.Error()),
+							slog.Int("send_errors_so_far", sendErrors))
 
-						return err
+						// Don't return — mark as seen and continue.
+						// This prevents unsent items from piling up
+						// and causing a bigger blast on the next poll.
+					} else {
+						sentCount++
 					}
 				}
 			}
@@ -436,11 +460,12 @@ func (p *Processor) processFeed(entry configfile.Feed, recipients []string) erro
 
 		}
 
-		// Mark the item as having been seen, after the email
-		// was (probably) sent.
+		// Always mark the item as seen, even if sending failed.
 		//
-		// This does run the risk that sending mail fails,
-		// due to error, and that keeps happening forever...
+		// This is deliberate: a transient send failure (e.g. rate limit)
+		// should not cause the item to be retried forever, potentially
+		// flooding the recipient on every subsequent poll cycle. One
+		// missed email is better than infinite duplicates.
 		err = p.recordItem(entry.URL, item.Link)
 		if err != nil {
 			logger.Error("failed to mark item as processed",
@@ -451,7 +476,9 @@ func (p *Processor) processFeed(entry configfile.Feed, recipients []string) erro
 
 	logger.Debug("feed processed",
 		slog.Int("seen_count", seen),
-		slog.Int("unseen_count", unseen))
+		slog.Int("unseen_count", unseen),
+		slog.Int("sent_count", sentCount),
+		slog.Int("send_errors", sendErrors))
 
 	// Now prune the items in this feed.
 	err = p.pruneFeed(entry.URL, items)
@@ -461,6 +488,13 @@ func (p *Processor) processFeed(entry configfile.Feed, recipients []string) erro
 			slog.String("error", err.Error()))
 
 		return fmt.Errorf("error pruning boltdb for %s: %s", entry.URL, err)
+	}
+
+	// If there were send failures, return a summary error so the caller
+	// knows this feed had problems — but all items are still marked as
+	// seen to prevent retry storms.
+	if sendErrors > 0 {
+		return fmt.Errorf("feed %s: %d/%d emails failed to send", entry.URL, sendErrors, sentCount+sendErrors)
 	}
 
 	return nil
