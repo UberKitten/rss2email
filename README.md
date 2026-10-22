@@ -188,6 +188,40 @@ State is stored in `~/.rss2email/state.db` (BoltDB). Each feed gets a bucket, an
 
 When a feed item falls out of the remote feed, it's automatically pruned from state. If a feed is removed from `feeds.txt`, its bucket is pruned on next run.
 
+## Runtime security maintenance
+
+The maintained Dockerfile and CI pin supported Go `1.26.10`; the generic image
+uses Alpine `3.24.3`. Rebuild from the exact reviewed fork revision, using the
+committed modules and Go's source compatibility guarantee. Run the existing
+`go build -v ./...` and `go test -v ./...` gates with an isolated home/config.
+Do not invoke `daemon`, `cron`, `test`, or feed/network commands against real
+configuration to verify a build.
+The targeted `golang.org/x/net v0.55.0` security update fixes reachable HTML
+parsing/rendering advisories; its required closure is `x/sys v0.45.0` and
+`x/text v0.37.0`. These modules require Go 1.25 or later; the pinned compiler
+remains 1.26.10. No feed, mail-delivery, or state-management feature is changed.
+
+The established private-apps installation is a local image overlay, not the
+generic GHCR image above. It retains the vendor's tini/entrypoint, msmtp setup,
+UID/GID 1000, `/app/rss2email`, `/home/rss2email`, and existing sendmail wrapper.
+Its runtime build context replaces only the static fork binary and updates
+the supported vendor base/packages. Do not substitute the generic image's
+`/app/.rss2email` layout or change the installation channel during maintenance.
+The site-owned Compose/deployment contract remains authoritative for the
+environment, mounts, poll interval, recipient configuration, and image pin.
+
+Before the single-instance cutover, retain the old image and a root-only,
+stopped-consistent checkpoint of the complete state/config bind, including the
+BoltDB seen-item state, feed list, templates, SMTP configuration and existing
+logs. Preserve the read-only feed-file mount. There must never be a second
+poller or an intentional resend; acceptance uses binary build metadata, existing
+service health/process state, and read-only state invariants without enumerating
+feed URLs or sending mail. A runtime-only rebuild does not authorize adding
+feeds, creating Azure senders, rule deployment, clearing seen state, or test SMTP.
+Rollback is deliberate and operator-assisted with the retained image and
+coupled checkpoint; never restore vulnerable code automatically or overwrite
+newer seen-item/config state.
+
 ## License
 
 [MIT](LICENSE)

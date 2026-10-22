@@ -24,7 +24,7 @@
 
 # STEP1 - Build-image
 ###########################################################################
-FROM golang:alpine AS builder
+FROM golang:1.26.10-alpine3.24 AS builder
 
 ARG VERSION
 
@@ -41,7 +41,7 @@ RUN go build -ldflags "-X main.version=$VERSION" -o /go/bin/rss2email
 
 # STEP2 - Deploy-image
 ###########################################################################
-FROM alpine
+FROM alpine:3.24.3
 
 # Install CA certificates for HTTPS feed fetching and TLS SMTP
 RUN apk add --no-cache ca-certificates
